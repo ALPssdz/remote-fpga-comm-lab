@@ -4,4 +4,4 @@ A versatile cloud-edge communication lab based on Zynq SoC. Features real-time v
 **基于 Zynq SoC 的多功能云边协同通信实验室。支持广泛信号处理实验的实时可视化。**
 
 ## 系统框图如下
-![alt text](/images/image-1.png)
+![alt text](/images/image.png)
