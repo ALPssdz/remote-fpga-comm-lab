@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FPGA Remote Lab v8.4 (Channel Master)</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'cyber-black': '#050505',
+                        'cyber-gray': '#121212',
+                        'cyber-blue': '#00f3ff',
+                        'cyber-orange': '#ffaa00',
+                        'cyber-green': '#00ff41',
+                        'cyber-red': '#ff2a2a',
+                        'cyber-yellow': '#ffd700',
+                        'cyber-purple': '#bc13fe',
+                    },
+                    fontFamily: { mono: ['"JetBrains Mono"', 'Consolas', 'monospace'] },
+                    animation: { 
+                        'pulse-fast': 'pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        'float': 'float 3s ease-in-out infinite'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { background-color: #050505; color: #e2e8f0; }
+        .glass-panel {
+            background: rgba(20, 25, 35, 0.6);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+        .glass-modal {
+            background: rgba(10, 10, 15, 0.95);
+            backdrop-filter: blur(20px);
+            border: 1px solid #333;
+            box-shadow: 0 0 50px rgba(0, 243, 255, 0.1);
+        }
+        .btn-glow:hover { box-shadow: 0 0 15px rgba(0, 243, 255, 0.4); border-color: #00f3ff; color: #fff; }
+        .fpga-card-selected { border-color: #00f3ff; background: rgba(0, 243, 255, 0.1); }
+        .fpga-card:hover { border-color: #666; }
+        
+        input[type=range] { -webkit-appearance: none; appearance: none; background: transparent; }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%;
+            background: #e2e8f0; cursor: pointer; margin-top: -6px; border: 2px solid #333;
+        }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; background: #334155; border-radius: 2px; }
+        input[type=range]:focus::-webkit-slider-thumb { background: #00f3ff; border-color: #fff; box-shadow: 0 0 10px #00f3ff; }
+        
+        #trigSlider::-webkit-slider-thumb { border-color: #ffd700; background: #ffd700; }
+        #trigSlider:focus::-webkit-slider-thumb { box-shadow: 0 0 10px #ffd700; }
+
+        .knob-label { font-size: 10px; color: #888; font-family: monospace; text-align: center; margin-top: 4px; }
+        .hidden-ctrl { display: none !important; }
+        .progress-bar { transition: width 0.1s linear; }
+
+        /* Channel Tabs */
+        .ch-tab { border: 1px solid #333; color: #666; font-size: 10px; font-weight: bold; cursor: pointer; transition: all 0.2s; }
+        .ch-tab:hover { color: #fff; border-color: #666; }
+        .ch-tab.active-a { background: rgba(0, 243, 255, 0.2); border-color: #00f3ff; color: #00f3ff; box-shadow: 0 0 10px rgba(0,243,255,0.2); }
+        .ch-tab.active-b { background: rgba(255, 215, 0, 0.2); border-color: #ffd700; color: #ffd700; box-shadow: 0 0 10px rgba(255,215,0,0.2); }
+        .ch-tab.active-c { background: rgba(188, 19, 254, 0.2); border-color: #bc13fe; color: #bc13fe; box-shadow: 0 0 10px rgba(188,19,254,0.2); }
+
+        /* Scrollbar */
+        .scrollbar-thin::-webkit-scrollbar { width: 4px; }
+        .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+        .scrollbar-thin::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+
+        /* Markdown & Math Typography */
+        .markdown-body p { margin-bottom: 0.5em; }
+        .markdown-body code { font-family: 'JetBrains Mono', monospace; background: rgba(0,0,0,0.4); color: #ff79c6; padding: 2px 4px; border-radius: 4px; font-size: 0.9em; }
+        .katex { font-size: 1.1em !important; color: #e2e8f0; }
+    </style>
+</head>
+<body class="h-screen w-screen overflow-hidden flex flex-col font-sans">
+
+    <header class="h-14 border-b border-gray-800 flex items-center justify-between px-6 bg-cyber-gray/80 backdrop-blur z-50">
+        <div class="flex items-center gap-3">
+            <i class="fa-solid fa-microchip text-cyber-blue text-xl animate-pulse"></i>
+            <h1 class="text-xl font-bold tracking-wider text-white font-mono">
+                remote-fpga-<span class="text-cyber-blue">comm-lab</span>
+                <span class="text-xs text-gray-500 ml-2">v8.4 Channel Master</span>
+            </h1>
+        </div>
+        <div class="flex items-center gap-6 font-mono text-xs">
+            <div class="flex items-center gap-2">
+                <span class="text-gray-400">TARGET:</span>
+                <span class="text-cyber-blue font-bold" id="topTargetName">NONE</span>
+            </div>
+            <div class="flex items-center gap-2 border-l border-gray-700 pl-6">
+                <span class="text-gray-400">SIM RATE:</span>
+                <span class="text-cyber-blue font-bold">1.0 GSps</span>
+            </div>
+            <button onclick="location.reload()" class="bg-cyber-blue/10 border border-cyber-blue/50 text-cyber-blue px-3 py-1 rounded hover:bg-cyber-blue/20 transition ml-4">
+                <i class="fa-solid fa-power-off mr-1"></i> REBOOT
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 flex gap-4 p-4 overflow-hidden relative">
+        
+        <aside class="w-[20%] flex flex-col gap-4">
+            <div class="glass-panel rounded-xl p-4 flex flex-col gap-3 border-l-4 border-cyber-blue">
+                <h2 class="text-xs font-bold text-gray-400 font-mono flex justify-between items-center">
+                    <span><i class="fa-solid fa-server mr-2"></i>TARGET SELECTION</span>
+                    <span class="text-[10px] bg-gray-800 px-1 rounded">2 DEV</span>
+                </h2>
+                <div id="fpgaList" class="flex flex-col gap-2"></div>
+                <button onclick="openUploadModal()" id="btnMainProgram" class="w-full bg-gray-800 border border-gray-600 text-gray-300 py-2 rounded text-xs font-bold transition flex items-center justify-center gap-2 group mt-1">
+                    <i class="fa-solid fa-download group-hover:animate-bounce"></i> LOAD BITSTREAM
+                </button>
+            </div>
+
+            <div class="glass-panel rounded-xl p-5 flex-1 flex flex-col gap-6">
+                <h2 class="text-sm font-mono text-gray-400 border-b border-gray-700 pb-2"><i class="fa-solid fa-sliders mr-2"></i>SIGNAL CONTROLS</h2>
+                <div class="space-y-1">
+                    <label class="text-xs text-cyber-blue font-bold">EXPERIMENT</label>
+                    <select id="expSelect" class="w-full bg-black/40 border border-gray-700 text-gray-200 p-2 rounded text-sm focus:border-cyber-blue focus:outline-none font-mono">
+                        <option value="SINE" selected>EXP-01: Sine Wave</option>
+                        <option value="AM">EXP-02: AM Modulation</option>
+                        <option value="FM">EXP-03: FM Modulation</option>
+                        <option value="ASK">EXP-04: ASK (OOK)</option>
+                        <option value="FSK">EXP-05: 2FSK Keying</option>
+                        <option value="QAM">EXP-06: M-QAM</option>
+                    </select>
+                </div>
+                <div class="group">
+                    <div class="flex justify-between text-xs font-mono mb-2">
+                        <span class="text-gray-300">CARRIER (fc)</span>
+                        <span class="text-cyber-blue"><span id="freqVal">20</span> MHz</span>
+                    </div>
+                    <input type="range" min="5" max="45" value="20" id="freqSlider" class="w-full">
+                </div>
+                <div class="group" id="ctrl-snr">
+                    <div class="flex justify-between text-xs font-mono mb-2">
+                        <span class="text-gray-300">SNR (NOISE)</span>
+                        <span class="text-cyber-orange"><span id="noiseVal">25</span> dB</span>
+                    </div>
+                    <input type="range" min="-5" max="40" value="25" id="noiseSlider" class="w-full">
+                </div>
+                <div class="group hidden-ctrl" id="ctrl-mod-freq">
+                    <div class="flex justify-between text-xs font-mono mb-2">
+                        <span class="text-gray-300" id="modFreqLabel">MOD FREQ</span>
+                        <span class="text-purple-400"><span id="modFreqVal">5</span> MHz</span>
+                    </div>
+                    <input type="range" min="1" max="10" value="5" id="modFreqSlider" class="w-full">
+                </div>
+                <div class="group hidden-ctrl" id="ctrl-order">
+                    <div class="flex justify-between text-xs font-mono mb-2">
+                        <span class="text-gray-300">QAM ORDER</span>
+                    </div>
+                    <div class="flex gap-2">
+                        <button class="order-btn flex-1 py-1 border border-gray-600 rounded text-xs text-gray-400 hover:text-white transition" data-val="4">4</button>
+                        <button class="order-btn flex-1 py-1 border border-gray-600 rounded text-xs text-gray-400 hover:text-white transition" data-val="16">16</button>
+                        <button class="order-btn flex-1 py-1 border border-gray-600 rounded text-xs text-gray-400 hover:text-white transition" data-val="64">64</button>
+                    </div>
+                </div>
+                <button onclick="resetParams()" class="w-full border border-gray-600 text-gray-400 py-2 rounded text-xs hover:text-white hover:border-white transition mt-2">
+                    RESET DEFAULT
+                </button>
+                <div class="mt-auto pt-4 border-t border-gray-800 flex-1 flex flex-col">
+                    <h3 class="text-xs font-mono text-gray-500 mb-2">SYSTEM LOG</h3>
+                    <div id="consoleLog" class="flex-1 bg-black/50 rounded border border-gray-800 p-2 font-mono text-[10px] text-green-500/80 overflow-y-auto leading-tight min-h-[100px]"></div>
+                </div>
+            </div>
+        </aside>
+
+        <section class="w-[55%] flex flex-col gap-4">
+            <div class="glass-panel rounded-xl flex-1 p-1 relative flex flex-col group overflow-hidden">
+                <div class="absolute top-4 left-4 right-4 z-10 flex justify-between items-center pointer-events-none">
+                    <h2 class="text-sm font-bold text-gray-400 font-mono tracking-widest bg-black/50 px-2 rounded backdrop-blur">
+                        OSCILLOSCOPE <span class="text-cyber-blue text-xs ml-2">PRO</span>
+                    </h2>
+                    <div class="flex items-center gap-2 pointer-events-auto bg-black/50 px-2 rounded backdrop-blur">
+                        <div id="trigLed" class="w-2 h-2 rounded-full bg-gray-600 transition-colors"></div>
+                        <span class="text-[10px] font-mono text-gray-400">TRIG</span>
+                    </div>
+                </div>
+                <div id="scopeOverlay" class="absolute inset-0 bg-black/80 z-20 flex flex-col items-center justify-center hidden">
+                    <i class="fa-solid fa-triangle-exclamation text-4xl text-yellow-500 mb-2"></i>
+                    <div class="text-gray-300 font-mono text-sm mt-2" id="overlayText">NO SIGNAL</div>
+                </div>
+                <div id="scopeChart" class="w-full h-full z-0"></div>
+            </div>
+
+            <div class="glass-panel rounded-xl h-40 p-4 flex gap-4 items-center justify-between bg-black/40">
+                
+                <div class="flex flex-col gap-2 w-1/3 border-r border-gray-700 pr-4">
+                    <div class="text-[10px] font-bold text-gray-500 w-full text-center pb-1">VERTICAL CONTROL</div>
+                    <div class="flex gap-1 mb-1">
+                        <button class="ch-tab flex-1 py-1 rounded active-a" id="tabA" onclick="selectChannel('A')">CH A</button>
+                        <button class="ch-tab flex-1 py-1 rounded" id="tabB" onclick="selectChannel('B')">CH B</button>
+                        <button class="ch-tab flex-1 py-1 rounded" id="tabC" onclick="selectChannel('C')">CH C</button>
+                    </div>
+                    <select id="sigSource" class="w-full bg-black/50 border border-gray-600 text-[10px] text-gray-300 rounded mb-2 py-1 px-2 font-mono focus:outline-none">
+                        </select>
+                    <div class="flex gap-3 w-full">
+                        <div class="flex-1"><input type="range" id="vPos" min="-5" max="5" step="0.1" class="w-full"><div class="knob-label">POS</div></div>
+                        <div class="flex-1"><input type="range" id="vScale" min="0.1" max="5" step="0.1" class="w-full"><div class="knob-label">VOLT</div></div>
+                    </div>
+                </div>
+
+                <div class="flex flex-col items-center gap-2 w-1/4">
+                    <div class="text-[10px] font-bold text-gray-500 w-full text-center pb-1">HORIZONTAL (TIME)</div>
+                    <div class="flex gap-4 w-full h-full flex-col justify-center">
+                        <div><input type="range" id="hPos" min="0" max="2000" step="10" value="0" class="w-full"><div class="knob-label">POSITION</div></div>
+                        <div><input type="range" id="hScale" min="100" max="2048" step="10" value="1024" class="w-full" style="direction: rtl"><div class="knob-label">TIME/DIV</div></div>
+                    </div>
+                </div>
+
+                <div class="flex flex-col items-center gap-2 w-1/3 border-l border-gray-700 pl-4">
+                    <div class="text-[10px] font-bold text-gray-500 w-full text-center pb-1">TRIGGER & SYSTEM</div>
+                    <div class="flex w-full gap-3 items-center mb-2">
+                        <div class="flex-1">
+                            <label class="text-[9px] text-gray-500 block">SOURCE</label>
+                            <select id="trigSource" class="w-full bg-black/50 border border-gray-600 text-[10px] text-cyber-yellow rounded py-1 px-1 font-mono">
+                                <option value="A">CH-A</option>
+                                <option value="B">CH-B</option>
+                                <option value="C">CH-C</option>
+                            </select>
+                        </div>
+                        <div class="flex-1 text-center">
+                            <input type="range" id="trigSlider" min="-3" max="3" step="0.1" value="0" class="w-full">
+                            <div class="knob-label text-cyber-yellow">LVL <span id="trigValText">0.0V</span></div>
+                        </div>
+                        <button id="btnTrigger" onclick="toggleTrigger()" class="w-12 py-2 border border-gray-600 text-gray-400 rounded hover:border-cyber-green hover:text-cyber-green transition text-[9px] font-mono">
+                            <span id="trigText">AUTO</span>
+                        </button>
+                    </div>
+                    <div class="flex gap-2 w-full">
+                        <button onclick="togglePause()" id="pauseBtn" class="flex-1 py-1 bg-gray-800 border border-gray-600 text-gray-300 hover:text-white rounded text-[10px]"><i class="fa-solid fa-pause"></i> STOP</button>
+                        <button onclick="clearBuffer()" class="flex-1 py-1 bg-gray-800 border border-gray-600 text-gray-300 hover:text-red-400 rounded text-[10px]"><i class="fa-solid fa-trash"></i> CLR</button>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <aside class="w-[25%] flex flex-col gap-4">
+            <div class="glass-panel rounded-xl w-full aspect-square p-2 relative flex flex-col items-center justify-center bg-black/20 mx-auto">
+                <div class="absolute top-3 left-4 z-10 pointer-events-none"><h2 class="text-xs font-bold text-gray-400 font-mono">CONSTELLATION</h2></div>
+                <div id="constellationChart" class="w-full h-full"></div>
+            </div>
+            <div class="glass-panel rounded-xl flex-1 p-2 relative flex flex-col">
+                <div class="absolute top-2 left-4 z-10 pointer-events-none"><h2 class="text-xs font-bold text-gray-400 font-mono">SPECTRUM (0-50MHz)</h2></div>
+                <div id="fftChart" class="w-full h-full"></div>
+            </div>
+        </aside>
+
+        <div id="uploadModal" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-black/80 backdrop-blur-sm">
+            <div class="glass-modal w-96 rounded-xl p-6 flex flex-col gap-4 animate-bounce-in">
+                <div class="flex justify-between items-center border-b border-gray-700 pb-3"><h2 class="text-lg font-bold text-white font-mono"><i class="fa-solid fa-file-circuit mr-2 text-cyber-blue"></i>LOAD BITSTREAM</h2><button onclick="closeUploadModal()" class="text-gray-500 hover:text-white"><i class="fa-solid fa-xmark"></i></button></div>
+                <div class="bg-black/50 border border-gray-700 border-dashed rounded-lg p-6 text-center cursor-pointer hover:border-cyber-blue transition group"><i class="fa-solid fa-cloud-arrow-up text-3xl text-gray-600 group-hover:text-cyber-blue mb-2 transition"></i><div class="text-xs text-gray-400">Click to select .bit / .bin file</div><input type="file" id="fileInput" class="hidden" onchange="handleFileSelect(this)"></div>
+                <div class="flex justify-between items-center text-xs font-mono"><span class="text-gray-400">TARGET:</span><span id="modalTargetName" class="text-cyber-blue">NONE</span></div><div id="fileName" class="text-xs text-cyber-green font-mono hidden">Selected: firmware_v4.bit</div>
+                <div id="progressContainer" class="hidden space-y-1"><div class="flex justify-between text-[10px] text-gray-400 font-mono"><span>PROGRAMMING...</span><span id="progressText">0%</span></div><div class="w-full h-2 bg-gray-800 rounded-full overflow-hidden"><div id="progressBar" class="h-full bg-cyber-blue w-0 progress-bar"></div></div></div>
+                <div class="grid grid-cols-2 gap-3 mt-2"><button onclick="closeUploadModal()" class="py-2 border border-gray-600 text-gray-400 rounded text-xs hover:text-white">CANCEL</button><button onclick="startProgramming()" id="btnProgram" class="py-2 bg-cyber-blue text-black font-bold rounded text-xs opacity-50 cursor-not-allowed" disabled>FLASH</button></div>
+            </div>
+        </div>
+        <div id="aiFab" onclick="toggleAiChat()" class="fixed bottom-6 left-6 w-12 h-12 rounded-full bg-cyber-purple/20 border border-cyber-purple text-cyber-purple flex items-center justify-center cursor-pointer hover:bg-cyber-purple hover:text-white hover:scale-110 transition z-40 animate-float shadow-[0_0_15px_rgba(188,19,254,0.4)]"><i class="fa-solid fa-robot text-xl"></i></div>
+        <div id="aiChatWindow" class="fixed bottom-20 left-6 w-[500px] h-[600px] glass-modal rounded-xl flex flex-col hidden z-50 transform transition-all origin-bottom-left">
+            <div class="h-10 border-b border-gray-700 flex items-center justify-between px-4 bg-cyber-purple/10 rounded-t-xl"><div class="flex items-center gap-2"><i class="fa-solid fa-brain text-cyber-purple text-xs"></i><span class="text-xs font-bold text-white font-mono">AI TEACHING ASSISTANT</span></div><div class="flex gap-2"><button onclick="toggleAiConfig()" class="text-gray-400 hover:text-white text-xs"><i class="fa-solid fa-gear"></i></button><button onclick="toggleAiChat()" class="text-gray-400 hover:text-white text-xs"><i class="fa-solid fa-chevron-down"></i></button></div></div>
+            <div id="aiConfigPanel" class="hidden bg-gray-900 p-3 border-b border-gray-700"><div class="text-[10px] text-gray-400 mb-1">DEEPSEEK API KEY</div><input type="password" id="apiKeyInput" class="w-full bg-black border border-gray-600 rounded px-2 py-1 text-xs text-white mb-2" placeholder="sk-..."><div class="text-[10px] text-gray-400 mb-1">API URL</div><input type="text" id="apiUrlInput" class="w-full bg-black border border-gray-600 rounded px-2 py-1 text-xs text-white mb-2" value="https://api.deepseek.com/chat/completions"><div class="text-[10px] text-gray-400 mb-1">MODEL NAME</div><input type="text" id="apiModelInput" class="w-full bg-black border border-gray-600 rounded px-2 py-1 text-xs text-white mb-2" value="deepseek-chat"><div class="grid grid-cols-2 gap-2"><button onclick="resetDeepSeek()" class="bg-gray-700 text-gray-300 text-xs py-1 rounded hover:bg-gray-600">RESET DEFAULTS</button><button onclick="saveAiConfig()" class="bg-cyber-purple text-white text-xs py-1 rounded">SAVE SETTINGS</button></div></div>
+            <div id="chatMessages" class="flex-1 overflow-y-auto p-3 flex flex-col gap-3 text-xs font-mono scrollbar-thin"><div class="ai-msg p-2 max-w-[85%]">👋 <strong>Welcome!</strong> I'm your AI Assistant.</div></div>
+            <div class="h-12 border-t border-gray-700 p-2 flex gap-2"><input type="text" id="aiInput" placeholder="Ask AI..." class="flex-1 bg-black/50 border border-gray-600 rounded px-2 text-xs text-white focus:border-cyber-purple focus:outline-none" onkeypress="if(event.key==='Enter') sendAiMessage()"><button onclick="sendAiMessage()" class="w-8 bg-cyber-purple/20 border border-cyber-purple text-cyber-purple rounded hover:bg-cyber-purple hover:text-white transition"><i class="fa-solid fa-paper-plane text-xs"></i></button></div>
+        </div>
+
+    </main>
+
+    <script>
+        // ================= 全局配置 =================
+        const state = {
+            experiment: 'SINE', freq: 12, modFreq: 2, modOrder: 16, noise: 25,
+            triggerMode: false, triggerLevel: 0.0, 
+            triggerSource: 'A', // A, B, or C
+            hOffset: 0, hWindow: 1024,
+            activeChannel: 'A', // Current channel being edited
+            // 独立通道配置
+            channels: {
+                A: { offset: 0, scale: 1, source: 0 }, // source index
+                B: { offset: -2, scale: 1, source: 1 },
+                C: { offset: 2, scale: 1, source: 2 }
+            },
+            isPaused: false,
+            fpgas: [{ id: 1, name: 'FPGA-01 (Z7020)', status: 'IDLE', ip: '192.168.1.10' }],
+            targetFpga: 1, isProgramming: false, lastTriggerIndex: 0 
+        };
+
+        // 实验信号定义 (用于下拉菜单)
+        const EXP_SIGNALS = {
+            'SINE': ['Output (Sine)', 'Ref (Cos)', 'Ground'],
+            'AM':   ['Modulated Output', 'Message (Env)', 'Carrier'],
+            'FM':   ['Modulated Output', 'Message', 'Ref Carrier'],
+            'ASK':  ['ASK Output', 'Digital Data', 'Carrier'],
+            'FSK':  ['FSK Output', 'Digital Data', 'Ref Carrier'],
+            'QAM':  ['QAM Output', 'I-Channel', 'Q-Channel']
+        };
+
+        // ================= ECharts =================
+        const scopeChart = echarts.init(document.getElementById('scopeChart'));
+        scopeChart.setOption({
+            legend: { data: ['CH-A', 'CH-B', 'CH-C'], textStyle: { color: '#888' }, top: 5, right: 10 },
+            grid: { top: 30, bottom: 20, left: 40, right: 10, borderColor: '#444', show: true, backgroundColor: 'rgba(0,0,0,0.2)' },
+            xAxis: { type: 'value', min: 0, max: 1024, show: false, boundaryGap: false },
+            yAxis: { type: 'value', min: -5, max: 5, splitLine: { lineStyle: { color: '#444', type: 'dashed' } }, axisLabel: { color: '#888' } },
+            series: [
+                { name: 'CH-A', type: 'line', showSymbol: false, lineStyle: { color: '#00f3ff', width: 2 }, data: [] }, 
+                { name: 'CH-B', type: 'line', showSymbol: false, lineStyle: { color: '#ffd700', width: 1.5 }, data: [] }, 
+                { name: 'CH-C', type: 'line', showSymbol: false, lineStyle: { color: '#bc13fe', width: 1.5, type: 'dashed' }, data: [] } 
+            ], animation: false
+        });
+        const constChart = echarts.init(document.getElementById('constellationChart'));
+        constChart.setOption({
+            grid: { top: 30, bottom: 30, left: 30, right: 30 }, xAxis: { min:-2.5,max:2.5, splitLine:{show:true, lineStyle:{color:'#333'}}, axisLabel:{show:false} }, yAxis: { min:-2.5,max:2.5, splitLine:{show:true, lineStyle:{color:'#333'}}, axisLabel:{show:false} },
+            series: [{ type: 'scatter', symbolSize: 3, itemStyle: { color: '#ffaa00', opacity: 0.6 }, data: [] }], animation: false
+        });
+        const fftChart = echarts.init(document.getElementById('fftChart'));
+        fftChart.setOption({
+            grid: { top: 25, bottom: 20, left: 35, right: 10 }, xAxis: { type: 'category', show: false, data: Array.from({length:256}) }, yAxis: { type: 'value', min:-100, max:10, splitLine:{show:false}, axisLabel:{color:'#666', fontSize:8} },
+            series: [{ type: 'line', showSymbol: false, lineStyle: { color: '#00ff41', width: 1 }, data: [] }], animation: false
+        });
+
+        // ================= DOM =================
+        const els = {
+            vPos: document.getElementById('vPos'), vScale: document.getElementById('vScale'),
+            hPos: document.getElementById('hPos'), hScale: document.getElementById('hScale'),
+            sigSource: document.getElementById('sigSource'), trigSource: document.getElementById('trigSource'),
+            trigSlider: document.getElementById('trigSlider'), trigValText: document.getElementById('trigValText'),
+            trigLed: document.getElementById('trigLed'), btnTrigger: document.getElementById('btnTrigger'),
+            // ... (AI & others)
+            fpgaList: document.getElementById('fpgaList'), btnMainProgram: document.getElementById('btnMainProgram'),
+            topTargetName: document.getElementById('topTargetName'), scopeOverlay: document.getElementById('scopeOverlay'), overlayText: document.getElementById('overlayText'),
+            logBox: document.getElementById('consoleLog'), freqSlider: document.getElementById('freqSlider'), modFreqSlider: document.getElementById('modFreqSlider'), noiseSlider: document.getElementById('noiseSlider'),
+            freqVal: document.getElementById('freqVal'), modFreqVal: document.getElementById('modFreqVal'), noiseVal: document.getElementById('noiseVal'),
+            expSelect: document.getElementById('expSelect'), ctrlModFreq: document.getElementById('ctrl-mod-freq'), ctrlOrder: document.getElementById('ctrl-order'),
+            modFreqLabel: document.getElementById('modFreqLabel'), modDesc: document.getElementById('modDesc'), pauseBtn: document.getElementById('pauseBtn'),
+            aiChatWindow: document.getElementById('aiChatWindow'), aiInput: document.getElementById('aiInput'), chatMessages: document.getElementById('chatMessages'),
+            aiConfigPanel: document.getElementById('aiConfigPanel'), apiKeyInput: document.getElementById('apiKeyInput'), apiUrlInput: document.getElementById('apiUrlInput'), apiModelInput: document.getElementById('apiModelInput')
+        };
+
+        // ================= Logic: Channel Management =================
+        function selectChannel(ch) {
+            state.activeChannel = ch;
+            // Update Tab Styles
+            ['A', 'B', 'C'].forEach(c => {
+                document.getElementById(`tab${c}`).className = `ch-tab flex-1 py-1 rounded ${c === ch ? 'active-' + c.toLowerCase() : ''}`;
+            });
+            // Update Controls to reflect selected channel's state
+            const conf = state.channels[ch];
+            els.vPos.value = conf.offset;
+            els.vScale.value = conf.scale;
+            updateSigDropdown(); // Refresh dropdown options
+            els.sigSource.value = conf.source; // Set selected source
+        }
+
+        function updateSigDropdown() {
+            const options = EXP_SIGNALS[state.experiment];
+            els.sigSource.innerHTML = options.map((opt, idx) => `<option value="${idx}">${opt}</option>`).join('');
+            els.sigSource.value = state.channels[state.activeChannel].source;
+        }
+
+        els.sigSource.addEventListener('change', (e) => { state.channels[state.activeChannel].source = parseInt(e.target.value); });
+        els.vPos.addEventListener('input', (e) => { state.channels[state.activeChannel].offset = parseFloat(e.target.value); });
+        els.vScale.addEventListener('input', (e) => { state.channels[state.activeChannel].scale = parseFloat(e.target.value); });
+        els.trigSource.addEventListener('change', (e) => { state.triggerSource = e.target.value; });
+
+        // ================= Core Generation =================
+        const SIM_SAMPLERATE = 1000.0; const BUFFER_SIZE = 4096;
+        let persistentBuffer = { A: new Float32Array(BUFFER_SIZE), B: new Float32Array(BUFFER_SIZE), C: new Float32Array(BUFFER_SIZE) };
+        let lastConstellation = [], lastFFT = [];
+
+        function generateData() {
+            if(state.isPaused) return;
+            const timeOffset = (Date.now() % 100000) / 1000;
+            const noiseAmp = Math.pow(10, -state.noise/20);
+            
+            // 1. Calculate Physical Signals (Output, Msg, Carrier)
+            let sig0 = 0, sig1 = 0, sig2 = 0;
+            let rawA = new Float32Array(BUFFER_SIZE), rawB = new Float32Array(BUFFER_SIZE), rawC = new Float32Array(BUFFER_SIZE);
+            let constData = [];
+            const wc = 2 * Math.PI * state.freq; 
+            const wm = 2 * Math.PI * state.modFreq; 
+
+            for(let i=0; i<BUFFER_SIZE; i++) {
+                const ct = i/1000.0 + timeOffset;
+                // Experiment Logic
+                if (state.experiment === 'SINE') {
+                    sig0 = Math.sin(wc*ct); sig1 = Math.cos(wc*ct); sig2 = 0;
+                    if(i%10===0 && i<1000) constData.push([sig1, sig0]);
+                } else if (state.experiment === 'AM') {
+                    const m = 0.7*Math.sin(wm*ct); const c = Math.sin(wc*ct);
+                    sig0 = (1+m)*c; sig1 = m; sig2 = c;
+                    if(i%10===0 && i<1000) constData.push([sig0, 0]);
+                } else if (state.experiment === 'FM') {
+                    const m = Math.sin(wm*ct);
+                    sig0 = Math.sin(wc*ct + 5*m); sig1 = m; sig2 = Math.sin(wc*ct);
+                    if(i%10===0 && i<1000) constData.push([Math.cos(wc*ct+5*m), Math.sin(wc*ct+5*m)]);
+                } else if (state.experiment === 'QAM') {
+                    const M = state.modOrder;
+                    const symIdx = Math.floor((i + timeOffset*1000) / (1000/state.modFreq));
+                    const seed = (symIdx * 9301 + 49297) % 233280;
+                    const randNorm = seed / 233280.0;
+                    const sqrtM = Math.sqrt(M);
+                    const scale = 1.0 / (sqrtM - 1 || 1);
+                    const idxI = Math.floor(randNorm * M) % sqrtM;
+                    const idxQ = Math.floor((randNorm * M) / sqrtM);
+                    const I = (idxI * 2 - (sqrtM - 1)) * scale;
+                    const Q = (idxQ * 2 - (sqrtM - 1)) * scale;
+                    sig1 = I; sig2 = Q;
+                    sig0 = I * Math.cos(wc*ct) - Q * Math.sin(wc*ct);
+                    if(i%20===0 && i<2000) constData.push([I+(Math.random()-.5)*noiseAmp, Q+(Math.random()-.5)*noiseAmp]);
+                } else {
+                    // ASK/FSK fallback
+                    sig0 = Math.sin(wc*ct); sig1 = (Math.sin(wm*ct)>0)?1:0; sig2 = Math.sin(wc*ct);
+                }
+
+                // Add Noise ONLY to Main Output (sig0)
+                sig0 += (Math.random()-0.5) * noiseAmp * 2.0;
+
+                // 2. Map to Channels based on User Selection
+                // Helper to map index 0/1/2 to signals
+                const signals = [sig0, sig1, sig2];
+                rawA[i] = signals[state.channels.A.source] || 0;
+                rawB[i] = signals[state.channels.B.source] || 0;
+                rawC[i] = signals[state.channels.C.source] || 0;
+            }
+
+            // 3. Trigger Logic
+            // Select buffer based on Trigger Source (A/B/C)
+            const trigBuffer = (state.triggerSource === 'A') ? rawA : (state.triggerSource === 'B' ? rawB : rawC);
+            let startIdx = 0;
+            if(state.triggerMode) {
+                for(let j=1; j<1000; j++) {
+                    if(trigBuffer[j-1] < state.triggerLevel && trigBuffer[j] >= state.triggerLevel) { startIdx = j; break; }
+                }
+                els.trigLed.className = (startIdx > 0) ? "w-2 h-2 rounded-full bg-cyber-green shadow-neon transition-colors" : "w-2 h-2 rounded-full bg-gray-600 transition-colors";
+            } else {
+                els.trigLed.className = "w-2 h-2 rounded-full bg-gray-600 transition-colors";
+            }
+
+            // 4. Apply Scaling & Offset for Display
+            const offset = parseInt(state.hOffset) + startIdx;
+            const windowLen = parseInt(state.hWindow);
+            let dispA = [], dispB = [], dispC = [];
+            
+            for(let i=0; i<windowLen; i++) {
+                const idx = offset + i;
+                if(idx >= BUFFER_SIZE) break;
+                // Apply (Value + Offset) * Scale or (Value * Scale) + Offset? 
+                // Oscilloscopes usually do: (Value * Scale) + Position (Offset in Screen Units)
+                // Here our Scale is multiplier. Let's do: Value * Scale + Offset
+                dispA.push([i, rawA[idx] * state.channels.A.scale + state.channels.A.offset]);
+                dispB.push([i, rawB[idx] * state.channels.B.scale + state.channels.B.offset]);
+                dispC.push([i, rawC[idx] * state.channels.C.scale + state.channels.C.offset]);
+            }
+
+            // FFT
+            let fft = []; for(let k=0;k<256;k++){ let m=-90+Math.random()*5; if(Math.abs(k*(50/256)-state.freq)<0.5) m=0; fft.push([k*(50/256)+"M", m]); }
+
+            return { waveA: dispA, waveB: dispB, waveC: dispC, xy: constData, fft: fft };
+        }
+
+        // ================= Standard Handlers =================
+        els.expSelect.addEventListener('change', (e) => { 
+            state.experiment = e.target.value; 
+            updateSigDropdown();
+            toggleControls(); 
+        });
+        els.hPos.oninput = (e) => state.hOffset = e.target.value;
+        els.hScale.oninput = (e) => { state.hWindow = e.target.value; scopeChart.setOption({xAxis:{max:state.hWindow}}); };
+        els.trigSlider.oninput = (e) => { state.triggerLevel = parseFloat(e.target.value); els.trigValText.innerText = state.triggerLevel.toFixed(1)+'V'; };
+        document.getElementById('freqSlider').oninput = (e) => { state.freq = parseInt(e.target.value); document.getElementById('freqVal').innerText = state.freq; };
+        document.getElementById('modFreqSlider').oninput = (e) => { state.modFreq = parseInt(e.target.value); document.getElementById('modFreqVal').innerText = state.modFreq; };
+        document.getElementById('noiseSlider').oninput = (e) => { state.noise = parseInt(e.target.value); document.getElementById('noiseVal').innerText = state.noise; };
+        document.querySelectorAll('.order-btn').forEach(b => b.onclick = (e) => { state.modOrder = parseInt(e.target.dataset.val); document.querySelectorAll('.order-btn').forEach(x=>x.classList.remove('text-cyber-blue','border-cyber-blue')); e.target.classList.add('text-cyber-blue','border-cyber-blue'); });
+
+        function toggleTrigger() { state.triggerMode=!state.triggerMode; els.btnTrigger.classList.toggle('text-cyber-green', state.triggerMode); els.btnTrigger.classList.toggle('border-cyber-green', state.triggerMode); document.getElementById('trigText').innerText=state.triggerMode?"NORM":"AUTO"; }
+        function togglePause() { state.isPaused=!state.isPaused; els.pauseBtn.innerHTML=state.isPaused?'<i class="fa-solid fa-play"></i> RUN':'<i class="fa-solid fa-pause"></i> STOP'; }
+        function clearBuffer() { scopeChart.setOption({series:[{data:[]},{data:[]},{data:[]}]}); }
+        function resetParams() { 
+            state.channels.A = {offset:0, scale:1, source:0}; 
+            state.channels.B = {offset:-2, scale:1, source:1};
+            state.channels.C = {offset:2, scale:1, source:2};
+            state.freq=12; state.noise=25; selectChannel('A');
+        }
+        function toggleControls() { 
+            const ex=state.experiment; const showMod=['AM','FM','ASK','FSK','QAM'].includes(ex); 
+            els.ctrlModFreq.classList.toggle('hidden-ctrl',!showMod); 
+            els.ctrlOrder.classList.toggle('hidden-ctrl',ex!=='QAM'); 
+        }
+
+        // ================= AI Chat (Stub) =================
+        let msgCounter=0; marked.use({breaks:true,gfm:true});
+        function resetDeepSeek(){els.apiUrlInput.value="https://api.deepseek.com/chat/completions";els.apiModelInput.value="deepseek-chat";saveAiConfig();alert("Reset!");}
+        function initAiConfig(){const k=localStorage.getItem('fpga_lab_api_key');if(k)els.apiKeyInput.value=k;}initAiConfig();
+        function toggleAiChat(){els.aiChatWindow.classList.toggle('hidden');} function toggleAiConfig(){els.aiConfigPanel.classList.toggle('hidden');}
+        function saveAiConfig(){localStorage.setItem('fpga_lab_api_key',els.apiKeyInput.value);toggleAiConfig();}
+        function appendChatMsg(role,html){const d=document.createElement('div');d.className=role==='user'?'user-msg p-2 max-w-[85%]':'ai-msg p-2 max-w-[85%]';d.innerHTML=html;els.chatMessages.appendChild(d);return d;}
+        async function sendAiMessage(){
+            const msg=els.aiInput.value.trim();if(!msg)return;
+            if(!els.apiKeyInput.value){toggleAiConfig();return alert("Need API Key");}
+            appendChatMsg('user',msg);els.aiInput.value='';
+            try{
+                const res=await fetch(els.apiUrlInput.value,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${els.apiKeyInput.value}`},body:JSON.stringify({model:els.apiModelInput.value,messages:[{role:"system",content:`FPGA Lab Helper. Exp:${state.experiment}`},{role:"user",content:msg}]})});
+                const d=await res.json(); appendChatMsg('ai',marked.parse(d.choices?.[0]?.message?.content||"Error"));
+            }catch(e){appendChatMsg('ai',`Error: ${e.message}`);}
+        }
+
+        // ================= Loop =================
+        function renderFpgaList(){els.fpgaList.innerHTML=`<div class="border rounded p-2 border-gray-700 bg-black/40 flex justify-between"><div class="flex flex-col"><span class="text-xs font-bold text-gray-200 font-mono">FPGA-01</span><span class="text-[9px] text-gray-500">192.168.1.10</span></div><div class="w-2 h-2 rounded-full bg-cyber-green shadow-[0_0_8px_#00ff41]"></div></div>`;} renderFpgaList();
+        
+        // Modal logic stub
+        const modal={el:document.getElementById('uploadModal'),file:document.getElementById('fileInput'),name:document.getElementById('fileName'),btn:document.getElementById('btnProgram'),bar:document.getElementById('progressBar')};
+        function openUploadModal(){modal.el.classList.remove('hidden');} function closeUploadModal(){modal.el.classList.add('hidden');} 
+        function handleFileSelect(i){if(i.files.length){modal.name.classList.remove('hidden');modal.btn.disabled=false;modal.btn.classList.remove('opacity-50','cursor-not-allowed');}}
+        function startProgramming(){modal.bar.style.width='100%';setTimeout(()=>{closeUploadModal();logSystem("Bitstream Loaded");},1000);}
+
+        selectChannel('A'); // Init tabs
+        toggleControls();
+        setInterval(() => {
+            const data = generateData();
+            if(!data) return;
+            scopeChart.setOption({ series: [{ data: data.waveA }, { data: data.waveB }, { data: data.waveC }] });
+            constChart.setOption({ series: [{ data: data.xy }] });
+            fftChart.setOption({ series: [{ data: data.fft }] });
+        }, 50);
+        window.onresize = () => { scopeChart.resize(); constChart.resize(); fftChart.resize(); };
+    </script>
+</body>
+</html>
