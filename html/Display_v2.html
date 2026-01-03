@@ -144,11 +144,7 @@
              左侧边栏：目标 & 控制
              ========================================== -->
         <aside class="w-[20%] flex flex-col gap-4">
-            <div class="glass-panel rounded-xl p-4 flex flex-col gap-3 border-l-4 border-cyber-blue">
-                <button onclick="openUploadModal()" id="btnMainProgram" class="w-full bg-gray-800 border border-gray-600 text-gray-300 py-2 rounded text-xs font-bold transition flex items-center justify-center gap-2 group mt-1">
-                    <i class="fa-solid fa-download group-hover:animate-bounce"></i> LOAD BITSTREAM
-                </button>
-            </div>
+            <!-- Removed Load Bitstream Panel -->
 
             <div class="glass-panel rounded-xl p-5 flex-1 flex flex-col gap-6">
                 <h2 class="text-sm font-mono text-gray-400 border-b border-gray-700 pb-2"><i class="fa-solid fa-sliders mr-2"></i>SIGNAL CONTROLS</h2>
@@ -298,18 +294,6 @@
         </aside>
 
         <!-- ==========================================
-             上传模态框
-             ========================================== -->
-        <div id="uploadModal" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-black/80 backdrop-blur-sm">
-            <div class="glass-modal w-96 rounded-xl p-6 flex flex-col gap-4 animate-bounce-in">
-                <div class="flex justify-between items-center border-b border-gray-700 pb-3"><h2 class="text-lg font-bold text-white font-mono"><i class="fa-solid fa-file-circuit mr-2 text-cyber-blue"></i>LOAD BITSTREAM</h2><button onclick="closeUploadModal()" class="text-gray-500 hover:text-white"><i class="fa-solid fa-xmark"></i></button></div>
-                <div class="bg-black/50 border border-gray-700 border-dashed rounded-lg p-6 text-center cursor-pointer hover:border-cyber-blue transition group"><i class="fa-solid fa-cloud-arrow-up text-3xl text-gray-600 group-hover:text-cyber-blue mb-2 transition"></i><div class="text-xs text-gray-400">Click to select .bit / .bin file</div><input type="file" id="fileInput" class="hidden" onchange="handleFileSelect(this)"></div>
-                <div id="fileName" class="text-xs text-cyber-green font-mono hidden">Selected: firmware_v4.bit</div>
-                <div id="progressContainer" class="hidden space-y-1"><div class="flex justify-between text-[10px] text-gray-400 font-mono"><span>PROGRAMMING...</span><span id="progressText">0%</span></div><div class="w-full h-2 bg-gray-800 rounded-full overflow-hidden"><div id="progressBar" class="h-full bg-cyber-blue w-0 progress-bar"></div></div></div>
-                <div class="grid grid-cols-2 gap-3 mt-2"><button onclick="closeUploadModal()" class="py-2 border border-gray-600 text-gray-400 rounded text-xs hover:text-white">CANCEL</button><button onclick="startProgramming()" id="btnProgram" class="py-2 bg-cyber-blue text-black font-bold rounded text-xs opacity-50 cursor-not-allowed" disabled>FLASH</button></div>
-            </div>
-        </div>
-        <!-- ==========================================
              AI 聊天界面
              ========================================== -->
         <div id="aiFab" onclick="toggleAiChat()" class="fixed bottom-6 left-6 w-12 h-12 rounded-full bg-cyber-purple/20 border border-cyber-purple text-cyber-purple flex items-center justify-center cursor-pointer hover:bg-cyber-purple hover:text-white hover:scale-110 transition z-40 animate-float shadow-[0_0_15px_rgba(188,19,254,0.4)]"><i class="fa-solid fa-robot text-xl"></i></div>
@@ -355,7 +339,6 @@
                 C: { offset: 2, scale: 1, source: 2 }
             },
             isPaused: false,
-            isProgramming: false 
         };
 
         const EXP_SIGNALS = {
@@ -406,7 +389,6 @@
             fftSource: document.getElementById('fftSource'),
             trigSlider: document.getElementById('trigSlider'), trigValText: document.getElementById('trigValText'),
             trigLed: document.getElementById('trigLed'), btnTrigger: document.getElementById('btnTrigger'),
-            btnMainProgram: document.getElementById('btnMainProgram'),
             scopeOverlay: document.getElementById('scopeOverlay'), overlayText: document.getElementById('overlayText'),
             logBox: document.getElementById('consoleLog'), freqSlider: document.getElementById('freqSlider'), modFreqSlider: document.getElementById('modFreqSlider'), noiseSlider: document.getElementById('noiseSlider'),
             freqVal: document.getElementById('freqVal'), modFreqVal: document.getElementById('modFreqVal'), noiseVal: document.getElementById('noiseVal'),
@@ -429,6 +411,7 @@
             els.vScale.value = conf.scale;
             updateSigDropdown(); 
             els.sigSource.value = conf.source; 
+            logSystem(`Channel ${ch} Selected`);
         }
 
         function updateSigDropdown() {
@@ -607,6 +590,7 @@
             state.experiment = e.target.value; 
             updateSigDropdown();
             toggleControls(); 
+            logSystem(`Experiment switched to ${state.experiment}`);
         });
         els.hPos.oninput = (e) => state.hOffset = e.target.value;
         els.hScale.oninput = (e) => { state.hWindow = e.target.value; scopeChart.setOption({xAxis:{max:state.hWindow}}); };
@@ -621,16 +605,17 @@
         document.getElementById('freqSlider').oninput = (e) => { state.freq = parseInt(e.target.value); document.getElementById('freqVal').innerText = state.freq; };
         document.getElementById('modFreqSlider').oninput = (e) => { state.modFreq = parseInt(e.target.value); document.getElementById('modFreqVal').innerText = state.modFreq; };
         document.getElementById('noiseSlider').oninput = (e) => { state.noise = parseInt(e.target.value); document.getElementById('noiseVal').innerText = state.noise; };
-        document.querySelectorAll('.order-btn').forEach(b => b.onclick = (e) => { state.modOrder = parseInt(e.target.dataset.val); document.querySelectorAll('.order-btn').forEach(x=>x.classList.remove('text-cyber-blue','border-cyber-blue')); e.target.classList.add('text-cyber-blue','border-cyber-blue'); });
+        document.querySelectorAll('.order-btn').forEach(b => b.onclick = (e) => { state.modOrder = parseInt(e.target.dataset.val); document.querySelectorAll('.order-btn').forEach(x=>x.classList.remove('text-cyber-blue','border-cyber-blue')); e.target.classList.add('text-cyber-blue','border-cyber-blue'); logSystem(`QAM Order set to ${state.modOrder}`); });
 
-        function toggleTrigger() { state.triggerMode=!state.triggerMode; els.btnTrigger.classList.toggle('text-cyber-green', state.triggerMode); els.btnTrigger.classList.toggle('border-cyber-green', state.triggerMode); document.getElementById('trigText').innerText=state.triggerMode?"NORM":"AUTO"; }
-        function togglePause() { state.isPaused=!state.isPaused; els.pauseBtn.innerHTML=state.isPaused?'<i class="fa-solid fa-play"></i> RUN':'<i class="fa-solid fa-pause"></i> STOP'; }
-        function clearBuffer() { scopeChart.setOption({series:[{data:[]},{data:[]},{data:[]}]}); }
+        function toggleTrigger() { state.triggerMode=!state.triggerMode; els.btnTrigger.classList.toggle('text-cyber-green', state.triggerMode); els.btnTrigger.classList.toggle('border-cyber-green', state.triggerMode); document.getElementById('trigText').innerText=state.triggerMode?"NORM":"AUTO"; logSystem(`Trigger Mode: ${state.triggerMode?"NORMAL":"AUTO"}`); }
+        function togglePause() { state.isPaused=!state.isPaused; els.pauseBtn.innerHTML=state.isPaused?'<i class="fa-solid fa-play"></i> RUN':'<i class="fa-solid fa-pause"></i> STOP'; logSystem(state.isPaused?"System Paused":"System Resumed"); }
+        function clearBuffer() { scopeChart.setOption({series:[{data:[]},{data:[]},{data:[]}]}); logSystem("Buffer Cleared"); }
         function resetParams() { 
             state.channels.A = {offset:0, scale:1, source:0}; 
             state.channels.B = {offset:-2, scale:1, source:1};
             state.channels.C = {offset:2, scale:1, source:2};
             state.freq=12; state.noise=25; selectChannel('A');
+            logSystem("Parameters Reset to Default");
         }
         function toggleControls() { 
             const ex=state.experiment; const showMod=['AM','FM','ASK','FSK','QAM'].includes(ex); 
@@ -751,14 +736,10 @@
         // ==========================================
         // 初始化 & 循环
         // ==========================================
-        // Modal logic stub
-        const modal={el:document.getElementById('uploadModal'),file:document.getElementById('fileInput'),name:document.getElementById('fileName'),btn:document.getElementById('btnProgram'),bar:document.getElementById('progressBar')};
-        function openUploadModal(){modal.el.classList.remove('hidden');} function closeUploadModal(){modal.el.classList.add('hidden');} 
-        function handleFileSelect(i){if(i.files.length){modal.name.classList.remove('hidden');modal.btn.disabled=false;modal.btn.classList.remove('opacity-50','cursor-not-allowed');}}
-        function startProgramming(){modal.bar.style.width='100%';setTimeout(()=>{closeUploadModal();logSystem("Bitstream Loaded");},1000);}
         function logSystem(msg){
-            const d = document.createElement('div'); d.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
-            els.logBox.appendChild(d); els.logBox.scrollTop = els.logBox.scrollHeight;
+            const t = new Date().toLocaleTimeString();
+            els.logBox.innerHTML += `<div><span class="text-gray-500">[${t}]</span> ${msg}</div>`;
+            els.logBox.scrollTop = els.logBox.scrollHeight;
         }
 
         selectChannel('A'); // Init tabs
